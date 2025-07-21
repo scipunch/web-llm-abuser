@@ -8,11 +8,6 @@ import (
 )
 
 func main() {
-	err := playwright.Install()
-	if err != nil {
-		log.Fatalf("failed to install driver with %v", err)
-	}
-
 	pw, err := playwright.Run()
 	if err != nil {
 		log.Fatalf("could not start playwright: %v", err)
