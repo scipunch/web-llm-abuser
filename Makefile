@@ -11,4 +11,4 @@ fmt:
 	go fmt ./...
 
 run:
-	go run main.go
+	go run cmd/wal/main.go

@@ -1,18 +1,43 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/scipunch/wla/cookies"
 )
 
 func main() {
+	var cookiesPath string
+	flag.StringVar(&cookiesPath, "cookies", "", "path to cookies.txt in netscape format")
+	flag.Parse()
+
+	var cookieJar []playwright.Cookie
+	if cookiesPath != "" {
+		slog.Info("reading cookies", "from", cookiesPath)
+		f, err := os.Open(cookiesPath)
+		if err != nil {
+			log.Fatalf("failed to read cookies file with %v", err)
+		}
+		cookieJar, err = cookies.FromNetscape(f)
+		f.Close()
+		if err != nil {
+			log.Fatalf("failed to parse cookies with %v", err)
+		}
+		slog.Info("cookie jar parsed", "amount", len(cookieJar), "value", cookieJar)
+	}
 	pw, err := playwright.Run()
 	if err != nil {
 		log.Fatalf("could not start playwright: %v", err)
 	}
-	browser, err := pw.Chromium.Launch()
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(false),
+	})
 	if err != nil {
 		log.Fatalf("could not launch browser: %v", err)
 	}
