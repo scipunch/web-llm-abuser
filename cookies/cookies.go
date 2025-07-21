@@ -5,11 +5,12 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"fmt"
 
 	"github.com/playwright-community/playwright-go"
 )
 
-const httpOnlyPrefix = "#HttpOny_"
+const httpOnlyPrefix = "#HttpOnly_"
 
 func FromNetscape(r io.Reader) ([]playwright.Cookie, error) {
 	var cookies []playwright.Cookie
@@ -24,7 +25,7 @@ func FromNetscape(r io.Reader) ([]playwright.Cookie, error) {
 
 		parts := strings.Fields(line)
 		if len(parts) != 7 {
-			continue // invalid line
+			return nil, fmt.Errorf("unexpected columns count %d", len(parts))
 		}
 
 		// Parse Secure
