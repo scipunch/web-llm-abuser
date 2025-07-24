@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 
@@ -41,24 +41,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not launch browser: %v", err)
 	}
-	page, err := browser.NewPage()
+	browserCtx, err := browser.NewContext()
+	if err != nil {
+		log.Fatalf("failed to create browser context with %v", err)
+	}
+	defer browserCtx.Close()
+	optCookies := make([]playwright.OptionalCookie, len(cookieJar))
+	for i, cookie := range cookieJar {
+		optCookies[i] = cookie.ToOptionalCookie()
+	}
+	browserCtx.AddCookies(optCookies)
+	page, err := browserCtx.NewPage()
 	if err != nil {
 		log.Fatalf("could not create page: %v", err)
 	}
-	if _, err = page.Goto("https://news.ycombinator.com"); err != nil {
+	if _, err = page.Goto("https://chatgpt.com"); err != nil {
 		log.Fatalf("could not goto: %v", err)
 	}
-	entries, err := page.Locator(".athing").All()
-	if err != nil {
-		log.Fatalf("could not get entries: %v", err)
-	}
-	for i, entry := range entries {
-		title, err := entry.Locator("td.title > span > a").TextContent()
-		if err != nil {
-			log.Fatalf("could not get text content: %v", err)
-		}
-		fmt.Printf("%d: %s\n", i+1, title)
-	}
+
+	time.Sleep(120 * time.Second)
 	if err = browser.Close(); err != nil {
 		log.Fatalf("could not close browser: %v", err)
 	}

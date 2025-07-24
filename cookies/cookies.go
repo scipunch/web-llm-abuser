@@ -2,10 +2,10 @@ package cookies
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
-	"fmt"
 
 	"github.com/playwright-community/playwright-go"
 )
