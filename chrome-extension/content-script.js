@@ -1,17 +1,19 @@
+let ws
+let prevMessageLength = 0;
+let totalResponses = 0;
+let currentIndex = 0;
+let inputText = "";
+let firstPageLoad = true;
+
 chrome.runtime.sendMessage({ action: "getWebsocketHost" }, function ({ host }) {
-  const ws = new WebSocket(host);
+  ws = new WebSocket(host);
   ws.onopen = () => {
     console.log("Websocket connection established");
   };
 
   ws.onmessage = (e) => {
     const msgData = JSON.parse(e.data);
-    switch (msgData.type) {
-      case "input":
-        sendInput(msgData.message);
-      default:
-        console.error("Unknown message", "data", msgData)
-    }
+    sendInput(msgData.message);
   };
 
   ws.onerror = (error) => {
@@ -19,35 +21,47 @@ chrome.runtime.sendMessage({ action: "getWebsocketHost" }, function ({ host }) {
   };
 })
 
-let totalResponses = 0;
-let currentIndex = 0;
-let inputText = "";
-let firstPageLoad = true;
 
 function sendInput(message) {
   firstPageLoad = false;
   console.log("Sending input:", message);
-  document.querySelector("#prompt-textarea > p").textContent = "whats up?"
-  document.querySelector("#composer-submit-button").click()
+  document.querySelector("#prompt-textarea > p").textContent = message
+  waitForElement("#composer-submit-button", (el) => el.click())
 }
 
 function checkResponses() {
   const responses = document.querySelectorAll(
-    ".markdown.prose:not(.result-streaming)"
+   ".markdown.prose:not(.result-streaming)"
   );
   console.log("checking responses", "current", responses.length, "total", totalResponses)
 
   if (responses.length !== totalResponses) {
+    const lastMsg = responses[responses.length - 1].textContent
+    if (lastMsg.length === 0 || lastMsg.length != prevMessageLength) {
+      prevMessageLength = lastMsg.length
+      return
+    }
     totalResponses = responses.length;
     if (firstPageLoad) {
       return
     }
-    ws.send({
-      type: "message",
-      message: responses[responses.length - 1].innerHTML,
-    });
-    console.log("Sent response:", responses[responses.length - 1]);
+    ws.send(JSON.stringify({
+      role: "model",
+      message: lastMsg,
+    }));
+    console.log("Sent response:", lastMsg);
+    prevMessageLength = 0
   }
+}
+
+function waitForElement(selector, callback) {
+    const interval = setInterval(() => {
+        const element = document.querySelector(selector);
+        if (element != null) {
+            clearInterval(interval);
+            callback(element);
+        }
+    }, 100);
 }
 
 setInterval(checkResponses, 100);

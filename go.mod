@@ -2,7 +2,10 @@ module github.com/scipunch/wla
 
 go 1.24.4
 
-require github.com/playwright-community/playwright-go v0.5200.0
+require (
+	github.com/playwright-community/playwright-go v0.5200.0
+	golang.org/x/net v0.10.0
+)
 
 require (
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
