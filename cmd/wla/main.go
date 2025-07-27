@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -64,7 +65,17 @@ func (h ResponsesHandler) Post(w http.ResponseWriter, r *http.Request) {
 	slog.Info("responses request", "body", reqBody)
 
 	h.userInput <- reqBody.Input
-	wsResp := <-h.wsMessage
+
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second*5)
+	defer cancel()
+
+	var wsResp WSMessage
+	select {
+	case wsResp = <-h.wsMessage:
+	case <-ctx.Done():
+		http.Error(w, "WebSocket answer was too long", http.StatusRequestTimeout)
+		return
+	}
 
 	var resp PostResponse
 	switch wsResp.T {
