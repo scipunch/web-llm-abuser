@@ -36,6 +36,9 @@ sequenceDiagram
 
 ```bash
 curl -X POST \
-    -d '{"role": "user", "message": "hello, there"}' \
-    localhost:8080 
+    -H "Content-Type: application/json" \
+    -d '{
+        "input": "hello, there"
+    }' \
+    'http://localhost:8080/responses'
 ```

@@ -6,7 +6,7 @@ chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     switch (request.action) {
         case "getWebsocketHost":
             chrome.storage.local.get(['websocketHost'], function (result) {
-                const host = result.websocketHost || 'ws://localhost:8080/websocket';
+                const host = result.websocketHost || 'ws://localhost:8080';
                 sendResponse({ host });
             });
             return true

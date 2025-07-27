@@ -6,14 +6,14 @@ let inputText = "";
 let firstPageLoad = true;
 
 chrome.runtime.sendMessage({ action: "getWebsocketHost" }, function ({ host }) {
-  ws = new WebSocket(host);
+  ws = new WebSocket(`${host}/responses/ws`);
   ws.onopen = () => {
     console.log("Websocket connection established");
   };
 
   ws.onmessage = (e) => {
     const msgData = JSON.parse(e.data);
-    sendInput(msgData.message);
+    sendInput(msgData.data);
   };
 
   ws.onerror = (error) => {
@@ -39,18 +39,13 @@ function checkResponses() {
     const lastMsg = responses[responses.length - 1].textContent
     if (lastMsg.length === 0 || lastMsg.length != prevMessageLength) {
       prevMessageLength = lastMsg.length
-      return
+      return null
     }
     totalResponses = responses.length;
     if (firstPageLoad) {
-      return
+      return null
     }
-    ws.send(JSON.stringify({
-      role: "model",
-      message: lastMsg,
-    }));
-    console.log("Sent response:", lastMsg);
-    prevMessageLength = 0
+    return lastMsg
   }
 }
 
@@ -64,5 +59,27 @@ function waitForElement(selector, callback) {
     }, 100);
 }
 
-setInterval(checkResponses, 100);
+setInterval(() => {
+  resp = {}
+  try {
+    const out = checkResponses()
+    if (out == null) {
+      return
+    }
+    resp.type = "model-output"
+    resp.data = out
+  } catch (e) {
+    resp.type = "error"
+    resp.data = e.toString()
+  }
+
+  prevMessageLength = 0
+
+  try {
+    ws.send(JSON.stringify(resp));
+    console.log("Sent response", resp);
+  } catch (e) {
+    console.error("could not send response via WebSocket", "cause", e)
+  }
+}, 100);
 console.log("Started interval check");

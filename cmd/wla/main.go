@@ -6,85 +6,129 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"golang.org/x/net/websocket"
 )
 
 func main() {
-	userMessages := make(chan Message)
-	llmMessages := make(chan Message)
+	h := ResponsesHandler{
+		userInput: make(chan string),
+		wsMessage: make(chan WSMessage),
+	}
 
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /websocket", websocket.Handler(LLMExchange(userMessages, llmMessages)))
-	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
-		var msg Message
-		err := json.NewDecoder(r.Body).Decode(&msg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		userMessages <- msg
-		msg = <-llmMessages
+	mux.Handle("GET /responses/ws", websocket.Handler(h.WebSocket))
+	mux.HandleFunc("POST /responses", h.Post)
 
-		respJSON, err := json.Marshal(msg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(respJSON)
-	})
-
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = ":8080"
+	}
 	server := http.Server{
-		Addr:    ":8080",
+		Addr:    host,
 		Handler: mux,
 	}
 
+	slog.Info("starting listening", "on", host)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
 }
 
-func LLMExchange(req <-chan Message, resp chan Message) func(ws *websocket.Conn) {
-	return func(ws *websocket.Conn) {
-		llmAnswer := make(chan Message)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+type ResponsesHandler struct {
+	userInput chan string
+	wsMessage chan WSMessage
+}
 
-		go func() {
-			for {
-				var msg Message
-				if err := websocket.JSON.Receive(ws, &msg); err != nil {
-					slog.Error("could not receive", "with", err)
-					cancel()
-					break
-				}
-				llmAnswer <- msg
-			}
-		}()
+type PostRequest struct {
+	Input string `json:"input"`
+}
 
+type PostResponse struct {
+	Output string `json:"output"`
+}
+
+func (h ResponsesHandler) Post(w http.ResponseWriter, r *http.Request) {
+	var reqBody PostRequest
+	err := json.NewDecoder(r.Body).Decode(&reqBody)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if reqBody.Input == "" {
+		http.Error(w, "input should not be empty", http.StatusUnprocessableEntity)
+		return
+	}
+	slog.Info("responses request", "body", reqBody)
+
+	h.userInput <- reqBody.Input
+	wsResp := <-h.wsMessage
+
+	var resp PostResponse
+	switch wsResp.T {
+	case "error":
+		slog.Error("chromium extension failed", "with", wsResp.Data)
+		http.Error(w, wsResp.Data, http.StatusInternalServerError)
+		return
+	case "model-output":
+		slog.Info("got LLM response", "length", len(wsResp.Data))
+		resp.Output = wsResp.Data
+	default:
+		log.Fatalf("unexpected chromium extension response %v", wsResp)
+	}
+
+	respJSON, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respJSON)
+}
+
+func (h ResponsesHandler) WebSocket(ws *websocket.Conn) {
+	slog.Info("got new WebSocket connection")
+	wsMessage := make(chan WSMessage)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
 		for {
-			select {
-			case userMsg := <-req:
-				err := websocket.JSON.Send(ws, userMsg)
-				if err != nil {
-					slog.Error("could not send", "with", err)
-					cancel()
-				}
-			case llmMsg := <-llmAnswer:
-				slog.Info("received LLM message", "length", len(llmMsg.Message))
-				resp <- llmMsg
-			case <-ctx.Done():
-				slog.Warn("socket with LLM closed")
-				return
+			var msg WSMessage
+			if err := websocket.JSON.Receive(ws, &msg); err != nil {
+				slog.Error("could not receive", "with", err)
+				cancel()
+				break
 			}
+			slog.Info("received message from WebSocket")
+			wsMessage <- msg
+		}
+	}()
+
+	for {
+		select {
+		case input := <-h.userInput:
+			err := websocket.JSON.Send(ws, WSMessage{T: "user-input", Data: input})
+			if err != nil {
+				slog.Error("could not send", "with", err)
+				cancel()
+			}
+			slog.Info("input text sent via WebSocket")
+		case wsMsg := <-wsMessage:
+			slog.Info("received WebSocket message", "data", wsMsg)
+			h.wsMessage <- wsMsg
+		case <-ctx.Done():
+			slog.Warn("socket with LLM closed")
+			return
 		}
 	}
 }
 
-type Message struct {
-	Role    string `json:"role"`
-	Message string `json:"message"`
+type WSMessage struct {
+	T    string `json:"type"`
+	Data string `json:"data"`
 }
