@@ -1,5 +1,11 @@
 # ChatGPT website abuser
 
+## Features
+
+- [x] Send prompt via HTTP and receive answer
+- [ ] Work with multiple chats (currently could be done via manual interaction with Web UI)
+- [ ] Automatic WebSocket reconnecting
+
 ## How it works
 
 ```mermaid
